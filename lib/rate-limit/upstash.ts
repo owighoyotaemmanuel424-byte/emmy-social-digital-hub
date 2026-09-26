@@ -14,23 +14,45 @@ import { Redis } from '@upstash/redis';
 let redisInstance: Redis | null = null;
 let ratelimitInstance: Ratelimit | null = null;
 
+const isValidHttpsUrl = (url?: string): boolean => {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const rawUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
+const rawToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+
 const hasRedisEnv = Boolean(
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  isValidHttpsUrl(rawUrl) &&
+  rawToken &&
+  rawToken.length > 5 &&
+  !rawUrl!.includes('your-upstash')
 );
 
-if (hasRedisEnv) {
-  redisInstance = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-  });
+if (hasRedisEnv && rawUrl && rawToken) {
+  try {
+    redisInstance = new Redis({
+      url: rawUrl,
+      token: rawToken,
+    });
 
-  // 200 requests per 1 minute sliding window
-  ratelimitInstance = new Ratelimit({
-    redis: redisInstance,
-    limiter: Ratelimit.slidingWindow(200, '1 m'),
-    analytics: true,
-    prefix: '@emmy-hub/ratelimit',
-  });
+    // 200 requests per 1 minute sliding window
+    ratelimitInstance = new Ratelimit({
+      redis: redisInstance,
+      limiter: Ratelimit.slidingWindow(200, '1 m'),
+      analytics: true,
+      prefix: '@emmy-hub/ratelimit',
+    });
+  } catch (initErr) {
+    console.warn('[Emmy Hub][RateLimit] Failed to initialize Upstash Redis:', initErr);
+    redisInstance = null;
+    ratelimitInstance = null;
+  }
 }
 
 export interface RateLimitResult {
@@ -46,8 +68,8 @@ export interface RateLimitResult {
  */
 export async function checkRateLimit(identifier: string): Promise<RateLimitResult> {
   if (!ratelimitInstance) {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('[Emmy Hub][RateLimit] Fail-closed triggered: Redis credentials missing in production.');
+    if (process.env.NODE_ENV === 'production' && hasRedisEnv) {
+      console.error('[Emmy Hub][RateLimit] Fail-closed triggered: Redis credentials invalid in production.');
       return {
         success: false,
         limit: 200,
