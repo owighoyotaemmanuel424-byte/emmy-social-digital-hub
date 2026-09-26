@@ -1,0 +1,6 @@
+{
+  "name": "JejePay Reseller Hub",
+  "description": "Enterprise VTU, telecom, virtual numbers, eSIM, utility bills, and gift card reseller platform powered by the JejeLaye API v1 with real-time wallet funding and margin management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
