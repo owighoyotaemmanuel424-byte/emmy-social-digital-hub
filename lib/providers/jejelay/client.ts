@@ -179,6 +179,20 @@ export class JejelayeClient {
           );
 
         case 422:
+          // If user is already registered on provider, treat as benign sync confirmation
+          if (
+            cleanEndpoint.includes('/auth/register') &&
+            /already been taken|already exists/i.test(JSON.stringify(parsedJson || ''))
+          ) {
+            this.log(`User already registered on upstream provider (${url.pathname})`);
+            return {
+              ...parsedJson,
+              status: 'success',
+              alreadyExists: true,
+              message: 'User already registered on upstream provider',
+            } as T;
+          }
+
           this.log(`422 Validation Error on ${url.pathname}:`, parsedJson.errors);
           throw new JejelayeError(
             parsedJson.message || 'Validation failed on provider submission.',

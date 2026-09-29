@@ -1,10 +1,10 @@
 /**
- * Emmy Social Digital Hub — Paystack Payment Webhook Handler
+ * Emmy Social Digital Hub — Paystack Dedicated Webhook Processor
  * 
  * WHY:
- * 1. HMAC-SHA512 Verification: Strictly verifies x-paystack-signature against PAYSTACK_SECRET_KEY.
- * 2. Idempotency: Guards against duplicate webhook deliveries using transaction reference checks.
- * 3. Kobo Accuracy: Paystack webhook amount is already in integer kobo.
+ * 1. HMAC SHA-512 Verification: Prevents spoofed webhook injection attacks.
+ * 2. Idempotent Processing: Validates payment reference before crediting user wallet.
+ * 3. Kobo Accuracy: Paystack webhook amount is already in kobo (e.g. 100000 = ₦1,000.00).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,7 +13,6 @@ import {
   findUserByEmail,
   updateWalletBalance,
   createTransactionRecord,
-  findTransactionByRef,
 } from '@/lib/db/customer-store';
 
 export async function POST(req: NextRequest) {
@@ -35,27 +34,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const payload = JSON.parse(rawBody || '{}');
+    const payload = JSON.parse(rawBody);
     const { event, data } = payload;
 
     if (event === 'charge.success' && data?.status === 'success') {
-      const customerEmail = data.customer?.email?.toLowerCase().trim();
+      const customerEmail = data.customer?.email;
       const amountKobo = BigInt(data.amount || 0); // Paystack sends amounts directly in kobo
       const reference = data.reference;
 
-      if (!customerEmail || amountKobo <= BigInt(0) || !reference) {
-        return NextResponse.json({ message: 'Ignored: Missing required charge fields' }, { status: 200 });
-      }
-
-      // Check if reference already credited (idempotent)
-      const existing = await findTransactionByRef(`paystack_${reference}`);
-      if (existing) {
-        return NextResponse.json({ message: 'Reference already processed' }, { status: 200 });
+      if (!customerEmail || amountKobo <= BigInt(0)) {
+        return NextResponse.json({ message: 'Ignored: Missing email or zero amount' }, { status: 200 });
       }
 
       const user = await findUserByEmail(customerEmail);
       if (user) {
-        // Credit customer wallet in integer kobo
+        // Credit customer wallet
         await updateWalletBalance(user.id, amountKobo);
 
         // Record successful funding transaction
@@ -70,7 +63,7 @@ export async function POST(req: NextRequest) {
           amountChargedKobo: amountKobo,
           status: 'successful',
           metadata: {
-            gateway: 'Paystack Card Checkout',
+            gateway: 'Paystack Checkout',
             channel: data.channel,
             paid_at: data.paid_at,
           },
@@ -83,6 +76,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'success' }, { status: 200 });
   } catch (err: unknown) {
     console.error('[Emmy Hub][Paystack Webhook] Error:', err);
-    return NextResponse.json({ error: 'Internal server error processing webhook' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -31,35 +31,10 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 // ==========================================
-// JWT AUTHENTICATION (JOSE)
+// JWT AUTHENTICATION (JOSE - RE-EXPORTED FROM LIB/JWT)
 // ==========================================
 
-export interface EmmyAuthTokenPayload extends JWTPayload {
-  userId: string;
-  email: string;
-  role: 'user' | 'admin';
-  name: string;
-}
-
-export async function signJwt(payload: EmmyAuthTokenPayload, expiresIn: string = '7d'): Promise<string> {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(expiresIn)
-    .setIssuer('emmy-social-digital-hub')
-    .sign(JWT_SECRET);
-}
-
-export async function verifyJwt(token: string): Promise<EmmyAuthTokenPayload | null> {
-  try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
-      issuer: 'emmy-social-digital-hub',
-    });
-    return payload as EmmyAuthTokenPayload;
-  } catch {
-    return null;
-  }
-}
+export { signJwt, verifyJwt, type EmmyAuthTokenPayload } from './jwt';
 
 // ==========================================
 // ZOD VALIDATION SCHEMAS
